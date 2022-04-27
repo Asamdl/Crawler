@@ -51,7 +51,7 @@ namespace Crawler
         }*/
 
 
-        const string URL = "https://scienceforum.ru";
+        const string URL = "https://www.utmn.ru";
         static string LoadPage(string url)
         {
             var result = "";
@@ -59,9 +59,17 @@ namespace Crawler
             {
                 url = URL + url;
             }
-            if (url[0] == '/' && url[1] == '/')
+            if (url[0] == ' ')
             {
-                url = "https:" + url;
+                string new_url = "";
+                for (int i = 0; i < url.Length; i++)
+                {
+                    if (url[i] != ' ')
+                    {
+                        new_url+=url[i];
+                    }
+                }
+                url = URL + new_url;
             }
             var request = (HttpWebRequest)WebRequest.Create(url);
             try
@@ -102,9 +110,26 @@ namespace Crawler
             
             
         }
-
-        static void extractingInfoFromSinglePage(string url, ref List<string> pageLinks, ref List<string> imageLinks, ref List<string> pdfLinks)
+        static string search(string value)
         {
+            string result = "";
+            for (int i = value.Length - 1; i >= 0; i--)
+            {
+                if (value[i] != '/')
+                {
+                    result+=value[i];
+                }
+            }
+            return result;
+        }
+        static List<List<string>> extractingInfoFromSinglePage(string url)
+        {
+            List<List<string>> result = new List<List<string>>()
+            {
+                new List<string>(),
+                new List<string>(),
+                new List<string>()
+            };
             var pageContent = LoadPage(url);
             var document = new HtmlDocument();
             if (pageContent != null)
@@ -113,7 +138,7 @@ namespace Crawler
             }
             else
             {
-                return;
+                return null;
             }
            
 
@@ -124,7 +149,11 @@ namespace Crawler
                 foreach (HtmlNode image in images)
                 {
                     var value = image.GetAttributeValue("src", "");
-                    imageLinks.Add(value);
+                    if (value.Length!= 0)
+                    {
+                        result[1].Add(value);
+                    }
+                    
                 }
             }
             if (!(links is null))
@@ -134,92 +163,111 @@ namespace Crawler
                     var value = link.GetAttributeValue("href", "");
                     if (value.Length > 1 && value.Contains("/"))
                     {
-                        if (value.Contains(".pdf"))
+                        if (value.Contains(".pdf") || value.Contains(".PDF"))
                         {
-                            pdfLinks.Add(value);
+                            result[2].Add(value);
                         }
-                        else if ((value.Contains("://") || !value.Contains("index") && !value.Contains("%")) && !imageLinks.Contains(value)&&value[0]!='.')
+                        //else if (!(value.Contains("://") || !value.Contains("index") && !value.Contains("%")) && !result[1].Contains(value) && value[0] != '.')
+                        //{
+                        //    result[0].Add(value);
+                        //}
+                        else if (value[0] == '/' && !value.Contains("://")&& !result[1].Contains(value)&& !value.Contains("//") && !search(value).Contains('.'))
                         {
-                            pageLinks.Add(value);
+                            result[0].Add(value);
                         }
-                        //if (value.Contains("://"))
-                        //{
-                        //    absoluteLinks.Add(value);
-                        //}
-                        //else if (value.Contains(".pdf"))
-                        //{
-                        //    pdfLinks.Add(value);
-                        //}
-                        //else if (!value.Contains("//") && !value.Contains("index") && !value.Contains("%"))
-                        //{
-                        //    relativeLinks.Add(value);
-                        //}
                     }
                 }
             }
+            return result;
+                
+
         }
 
-        static void extractingInfoFromMultiplePages(List<string> links, List<string> pageLinks, List<string> imageLinks, List<string> pdfLinks)
+        static List<List<string>> extractingInfoFromMultiplePages(List<string> links)
         {
-            foreach (string url in links)
+            List<List<string>> result = new List<List<string>>()
             {
-                extractingInfoFromSinglePage(url, ref pageLinks, ref imageLinks, ref pdfLinks);
-            }
+                new List<string>(),
+                new List<string>(),
+                new List<string>()
+            };
+            //foreach (string url in links)
+            //{
+            //    extractingInfoFromSinglePage(url, ref result.Last(), ref imageLinks, ref pdfLinks);
+            //}
+            return result;
         }
 
-        static void queries(int numTask, int depth)
+        static void queries(int depth)
         {
-
-            Task[] tasks = new Task[numTask];
-
-            List<string> pageLinks = new List<string>();
-            List<string> imageLinks = new List<string>();
-            List<string> pdfLinks = new List<string>();
-            extractingInfoFromSinglePage(URL, ref pageLinks, ref imageLinks, ref pdfLinks);
-            List<List<string>> pageTaskLinks = new List<List<string>>();
-            List<List<string>> imageTaskLinks = new List<List<string>>();
-            List<List<string>> pdfTaskLinks = new List<List<string>>();
-            int count = 0;
+            List<List<string>> data = extractingInfoFromSinglePage(URL);
+            List<string> kit = data[0];
             for (int d = 0; d < depth; d++)
             {
-                int size_kit = pageLinks.Count / numTask;
-                for (int i = 0; i < numTask; i++)
+                int countLinks = kit.Count;
+                if (countLinks > 0)
                 {
-                    int _count = count;
-                    int _i = i;
-                    pageTaskLinks.Add(new List<string>());
-                    imageTaskLinks.Add(new List<string>());
-                    pdfTaskLinks.Add(new List<string>());
-                    List<string> kit = new List<string>();
-                    for (int k = i * size_kit; k < (i + 1) * size_kit; k++)
+                    Task<List<List<string>>>[] tasks = new Task<List<List<string>>>[countLinks];
+                    for (int i = 0; i < countLinks; i++)
                     {
-                        kit.Add(pageLinks[k]);
+                        int _i = i;
+                        tasks[_i] = Task<List<List<string>>>.Factory.StartNew(() => extractingInfoFromSinglePage(kit[_i]));
                     }
-                    if (i == (numTask - 1))
+                    Task.WaitAll(tasks);
+                    kit = new List<string>();
+                    foreach (var task in tasks)
                     {
-                        for(int j = (i + 1) * size_kit; j < pageLinks.Count; j++)
+                        List<List<string>> resTask = task.Result;
+                        if (!(resTask is null))
                         {
-                            kit.Add(pageLinks[j]);
+                            if (!(resTask[0] is null))
+                            {
+                                foreach (var link in resTask[0])
+                                {
+                                    if (!data[0].Contains(link))
+                                    {
+                                        data[0].Add(link);
+                                        kit.Add(link);
+                                    }
+                                }
+                            }
+                        }
+                        if (!(resTask is null))
+                        {
+                            if (!(resTask[1] is null))
+                            {
+                                foreach (var image in resTask[1])
+                                {
+                                    if (!data[1].Contains(image))
+                                    {
+                                        data[1].Add(image);
+                                    }
+                                }
+                            }
+                        }
+                        if (!(resTask is null))
+                        {
+                            if (!(resTask[2] is null))
+                            {
+                                foreach (var pdf in resTask[2])
+                                {
+                                    if (!data[2].Contains(pdf))
+                                    {
+                                        data[2].Add(pdf);
+                                    }
+                                }
+                            }
                         }
                     }
-                    tasks[_i] = Task.Factory.StartNew(() => extractingInfoFromMultiplePages(kit, pageTaskLinks[_count], imageTaskLinks[_count], pdfTaskLinks[_count]));
-                    count += 1;
                 }
-                Task.WaitAll(tasks);
                 
-                pageLinks = new List<string>();
-                foreach (var st in pageTaskLinks)
-                {
-                    foreach(var stm in st)
-                    {
-                        pageLinks.Add(stm.ToString());
-                    }
-                }
+                
+               
                 Console.WriteLine(2);
             }
 
 
-            Console.WriteLine(2);
+            Console.WriteLine(1);
 
 
 
@@ -235,7 +283,7 @@ namespace Crawler
             List<string> imageLinks = new List<string>();
             List<string> pdfLinks = new List<string>();
             //extractingInfoFromSinglePage(URL, ref pageLinks, ref imageLinks, ref pdfLinks);
-            queries(20, 2);
+            queries(2);
 
 
 
