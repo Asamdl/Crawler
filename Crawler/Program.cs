@@ -51,7 +51,8 @@ namespace Crawler
         }*/
 
 
-        const string URL = "https://www.utmn.ru";
+        //const string URL = "https://www.utmn.ru";
+        const string URL = "http://tsh1.ucoz.ru";
         static string LoadPage(string url)
         {
             var result = "";
@@ -100,9 +101,9 @@ namespace Crawler
                 }
                 return result;
             }
-            catch
+            catch(Exception ex)
             {
-                Console.WriteLine("Error");
+                Console.WriteLine(string.Format("{0}{1}",ex.Message.ToString(), url));
                 return null;
             }
             
@@ -122,13 +123,14 @@ namespace Crawler
             }
             return result;
         }
+        //getting data from the home page
         static List<List<string>> extractingInfoFromSinglePage(string url)
         {
             List<List<string>> result = new List<List<string>>()
             {
-                new List<string>(),
-                new List<string>(),
-                new List<string>()
+                new List<string>(),//pageLinks
+                new List<string>(),//imageLinks
+                new List<string>()//pdfLinks
             };
             var pageContent = LoadPage(url);
             var document = new HtmlDocument();
@@ -138,10 +140,11 @@ namespace Crawler
             }
             else
             {
+                //Console.WriteLine(string.Format("html is null {0}", url));
                 return null;
             }
-           
 
+            //search for links and images
             HtmlNodeCollection links = document.DocumentNode.SelectNodes(".//a");
             HtmlNodeCollection images = document.DocumentNode.SelectNodes(".//img");
             if (!(images is null))
@@ -149,7 +152,7 @@ namespace Crawler
                 foreach (HtmlNode image in images)
                 {
                     var value = image.GetAttributeValue("src", "");
-                    if (value.Length!= 0)
+                    if (value.Contains("/")&&value.Length!= 0 && !value.Contains("//") && !value.Contains(".."))
                     {
                         result[1].Add(value);
                     }
@@ -163,15 +166,11 @@ namespace Crawler
                     var value = link.GetAttributeValue("href", "");
                     if (value.Length > 1 && value.Contains("/"))
                     {
-                        if (value.Contains(".pdf") || value.Contains(".PDF"))
+                        if ((value.Contains(".pdf") || value.Contains(".PDF"))&& !value.Contains("span"))
                         {
                             result[2].Add(value);
                         }
-                        //else if (!(value.Contains("://") || !value.Contains("index") && !value.Contains("%")) && !result[1].Contains(value) && value[0] != '.')
-                        //{
-                        //    result[0].Add(value);
-                        //}
-                        else if (value[0] == '/' && !value.Contains("://")&& !result[1].Contains(value)&& !value.Contains("//") && !search(value).Contains('.'))
+                        else if (!value.Contains(' ')&&value[0] == '/' && !value.Contains("://")&& !result[1].Contains(value)&& !value.Contains("//") && !search(value).Contains('.'))
                         {
                             result[0].Add(value);
                         }
@@ -179,29 +178,14 @@ namespace Crawler
                 }
             }
             return result;
-                
-
         }
-
-        static List<List<string>> extractingInfoFromMultiplePages(List<string> links)
+        //main function 
+        static List<List<string>> queries(int depth)
         {
-            List<List<string>> result = new List<List<string>>()
-            {
-                new List<string>(),
-                new List<string>(),
-                new List<string>()
-            };
-            //foreach (string url in links)
-            //{
-            //    extractingInfoFromSinglePage(url, ref result.Last(), ref imageLinks, ref pdfLinks);
-            //}
-            return result;
-        }
-
-        static void queries(int depth)
-        {
+            //getting data from home page
             List<List<string>> data = extractingInfoFromSinglePage(URL);
             List<string> kit = data[0];
+
             for (int d = 0; d < depth; d++)
             {
                 int countLinks = kit.Count;
@@ -231,9 +215,7 @@ namespace Crawler
                                     }
                                 }
                             }
-                        }
-                        if (!(resTask is null))
-                        {
+                        
                             if (!(resTask[1] is null))
                             {
                                 foreach (var image in resTask[1])
@@ -244,9 +226,7 @@ namespace Crawler
                                     }
                                 }
                             }
-                        }
-                        if (!(resTask is null))
-                        {
+                                        
                             if (!(resTask[2] is null))
                             {
                                 foreach (var pdf in resTask[2])
@@ -260,50 +240,75 @@ namespace Crawler
                         }
                     }
                 }
-                
-                
-               
-                Console.WriteLine(2);
             }
 
-
-            Console.WriteLine(1);
-
-
-
+            return data;
         }
-
+        static void save_res(List<string> data,string path)
+        {
+            using (FileStream fstream = new FileStream(path, FileMode.OpenOrCreate))
+            {
+                foreach (string link in data)
+                {
+                    byte[] buffer = Encoding.Default.GetBytes(URL + link+"\n");
+                    fstream.Write(buffer, 0, buffer.Length);
+                }
+            }
+        }
         static void Main(string[] args)
         {
+            #region [ rus_in_console ]
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             var enc1251 = Encoding.GetEncoding(1251);
             Console.OutputEncoding = Encoding.UTF8;
             Console.InputEncoding = enc1251;
+            #endregion
+
+            string path = @"C:\Users\Aoki\source\repos\Crawler\Crawler\data";
+            string subpath = string.Format(@"{0}",DateTime.Now.Millisecond*DateTime.Now.Second);
+            DirectoryInfo dirInfo = new DirectoryInfo(path);
+            if (!dirInfo.Exists)
+            {
+                dirInfo.Create();
+            }
+            dirInfo.CreateSubdirectory(subpath);
+            string path_to_file_links = path+"\\"+subpath+"\\links.txt";
+            string path_to_file_images = path + "\\" + subpath +"\\images.txt";
+            string path_to_file_pdfFiles = path + "\\" + subpath +"\\pdfFiles.txt";
+
             List<string> pageLinks = new List<string>();
             List<string> imageLinks = new List<string>();
             List<string> pdfLinks = new List<string>();
             //extractingInfoFromSinglePage(URL, ref pageLinks, ref imageLinks, ref pdfLinks);
-            queries(2);
+            List<List<string>> data = new List<List<string>>()
+            {
+                new List<string>(),//pageLinks
+                new List<string>(),//imageLinks
+                new List<string>()//pdfLinks
+            };
+            int depth = 3;
+            data = queries(depth);
 
 
 
             Console.WriteLine("Page Links:");
-            foreach (string link in pageLinks)
-            {
-                Console.WriteLine(link);
-            }
+            save_res(data[0], path_to_file_links);
+
+
 
             Console.WriteLine("Image Links:");
-            foreach (string image in imageLinks)
-            {
-                Console.WriteLine(image);
-            }
+            save_res(data[1], path_to_file_images);
 
             Console.WriteLine("Pdf Links:");
-            foreach (string pdf in pdfLinks)
-            {
-                Console.WriteLine(pdf);
-            }
+            save_res(data[2], path_to_file_pdfFiles);
+
+            Console.WriteLine("name folder:" + subpath);
+
+            Console.WriteLine(String.Format("Глубина : {0}", depth));
+            Console.WriteLine("Найдено:");
+            Console.WriteLine(String.Format("Ссылок: {0}", data[0].Count));
+            Console.WriteLine(String.Format("Картинок: {0}", data[1].Count));
+            Console.WriteLine(String.Format("DPF-файлов: {0}",data[2].Count));
 
 
         }
